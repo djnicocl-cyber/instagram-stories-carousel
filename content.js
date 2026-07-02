@@ -1,14 +1,52 @@
-// content.js - Instagram Stories Carousel Extension
-// El BUCLE lo maneja background.js via chrome.tabs.update.
-
+// content.js v6 - Detecta fin de historias y fuerza bucle
 (function() {
   'use strict';
+
+  let isMonitoring = false;
+  let checkInterval = null;
+  let lastUrl = location.href;
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.type === 'GET_STORIES') {
       sendResponse({ stories: getStoriesList() });
     }
+    if (msg.type === 'START_MONITORING') {
+      startMonitoring();
+      sendResponse({ ok: true });
+    }
+    if (msg.type === 'STOP_MONITORING') {
+      stopMonitoring();
+      sendResponse({ ok: true });
+    }
     return true;
+  });
+
+  function startMonitoring() {
+    if (isMonitoring) return;
+    isMonitoring = true;
+    lastUrl = location.href;
+    checkInterval = setInterval(() => {
+      if (location.href !== lastUrl) {
+        const from = lastUrl;
+        lastUrl = location.href;
+        const wasInStories = /\/stories\//.test(from);
+        const nowInStories = /\/stories\//.test(lastUrl);
+        if (wasInStories && !nowInStories) {
+          chrome.runtime.sendMessage({ type: 'STORIES_ENDED' });
+        }
+      }
+    }, 500);
+  }
+
+  function stopMonitoring() {
+    isMonitoring = false;
+    if (checkInterval) { clearInterval(checkInterval); checkInterval = null; }
+  }
+
+  chrome.storage.local.get(['loopActive'], (data) => {
+    if (data.loopActive && /\/stories\//.test(location.href)) {
+      startMonitoring();
+    }
   });
 
   function getStoriesList() {
