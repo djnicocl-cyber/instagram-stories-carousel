@@ -1,10 +1,8 @@
-// content.js v3 - Carrusel automatico + panel de historias
+// content.js v4 - Bucle real sin recargar pagina
 
 let carouselActive = false;
 let storyTimer = null;
-let loopCheckTimer = null;
 let currentConfig = { username: '', maxAge: 24 };
-let isLooping = false;
 
 // ---- Mensajes desde popup ----
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -15,68 +13,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   } else if (msg.action === 'stopCarousel') {
     stopCarousel();
     sendResponse({ ok: true });
-  } else if (msg.action === 'ping') {
-    sendResponse({ active: carouselActive });
   } else if (msg.action === 'getStories') {
-    // Leer el DOM de Instagram para obtener la lista de historias disponibles
-    const stories = extractStoriesFromDOM();
-    sendResponse({ stories });
+    sendResponse({ stories: extractStoriesFromDOM() });
   }
   return true;
 });
-
-// ---- Extraer historias del DOM de Instagram ----
-function extractStoriesFromDOM() {
-  const stories = [];
-  try {
-    // Intentar leer la URL actual para obtener el usuario
-    const pathMatch = location.pathname.match(/\/stories\/([^/]+)/);
-    const currentUser = pathMatch ? pathMatch[1] : '';
-
-    // Buscar avatar del usuario actual
-    const avatarEl = document.querySelector('img[alt*="foto de perfil"], img[alt*="profile picture"], header img');
-    const avatarSrc = avatarEl ? avatarEl.src : '';
-
-    // Buscar barra de progreso para contar historias
-    const segments = document.querySelectorAll(
-      '[class*="ProgressBar"] > div, [class*="progressBar"] > div, [class*="Progress"] > span'
-    );
-    const totalSegments = segments.length || 1;
-
-    // Calcular tiempo aproximado
-    const now = new Date();
-    const timeStr = 'Ahora';
-
-    if (currentUser) {
-      stories.push({
-        username: currentUser,
-        avatar: avatarSrc,
-        time: totalSegments > 1 ? totalSegments + ' historias' : 'Historia activa',
-        segments: totalSegments
-      });
-    }
-
-    // Buscar otros usuarios con historias en el feed lateral si los hay
-    const sideUsers = document.querySelectorAll('a[href*="/stories/"]');
-    const seen = new Set([currentUser]);
-    sideUsers.forEach(a => {
-      const m = a.href.match(/\/stories\/([^/]+)/);
-      if (m && !seen.has(m[1])) {
-        seen.add(m[1]);
-        const img = a.querySelector('img');
-        stories.push({
-          username: m[1],
-          avatar: img ? img.src : '',
-          time: 'Historia disponible'
-        });
-      }
-    });
-
-  } catch (e) {
-    // Si falla, devolver array vacio para que popup use fallback
-  }
-  return stories;
-}
 
 // Auto-inicio si ya estaba activo
 chrome.storage.local.get(['username', 'maxAge', 'isRunning'], (data) => {
@@ -86,96 +27,187 @@ chrome.storage.local.get(['username', 'maxAge', 'isRunning'], (data) => {
   }
 });
 
-// ---- Control principal ----
 function startCarousel() {
   carouselActive = true;
-  isLooping = false;
-  clearTimers();
-  waitForFirstStory();
+  clearTimer();
+  waitForStory();
 }
 
 function stopCarousel() {
   carouselActive = false;
-  isLooping = false;
-  clearTimers();
+  clearTimer();
 }
 
-function clearTimers() {
+function clearTimer() {
   if (storyTimer) { clearTimeout(storyTimer); storyTimer = null; }
-  if (loopCheckTimer) { clearTimeout(loopCheckTimer); loopCheckTimer = null; }
 }
 
-function waitForFirstStory() {
+// Esperar a que aparezca video o imagen de historia
+function waitForStory() {
   if (!carouselActive) return;
-  const video = getActiveVideo();
-  if (video) {
-    scheduleNextCheck();
+  if (getActiveVideo()) {
+    scheduleAdvance();
   } else {
-    storyTimer = setTimeout(waitForFirstStory, 800);
+    storyTimer = setTimeout(waitForStory, 700);
   }
 }
 
 function getActiveVideo() {
-  const videos = document.querySelectorAll('video');
-  for (const v of videos) {
+  const vids = document.querySelectorAll('video');
+  for (const v of vids) {
     if (v.readyState >= 2 || v.duration > 0) return v;
   }
   return null;
 }
 
-function scheduleNextCheck() {
+// Programar cuando avanzar a la siguiente historia
+function scheduleAdvance() {
   if (!carouselActive) return;
-  clearTimers();
+  clearTimer();
   const video = getActiveVideo();
-  let delay = 5000;
+  let delay = 5000; // default para imagenes
   if (video && video.duration > 0 && !isNaN(video.duration)) {
-    const remaining = (video.duration - video.currentTime) * 1000;
-    delay = Math.max(remaining, 400) + 400;
+    const rem = (video.duration - video.currentTime) * 1000;
+    delay = Math.max(rem, 300) + 500;
   }
-  storyTimer = setTimeout(handleStoryEnd, delay);
+  storyTimer = setTimeout(tryAdvance, delay);
 }
 
-function handleStoryEnd() {
+// Intentar avanzar. Si no hay siguiente -> reiniciar bucle
+function tryAdvance() {
   if (!carouselActive) return;
-  const nextBtn = document.querySelector(
-    '[aria-label="Next"], [aria-label="Siguiente"], [aria-label="Next story"], [aria-label="Siguiente historia"]'
-  );
-  if (nextBtn) {
-    nextBtn.click();
-    storyTimer = setTimeout(scheduleNextCheck, 1200);
+
+  const next = getNextButton();
+  if (next) {
+    next.click();
+    storyTimer = setTimeout(scheduleAdvance, 1000);
   } else {
-    startLoop();
+    // No hay boton siguiente: llegamos al final
+    loopBack();
   }
 }
 
-// ---- BUCLE: volver al inicio SIN recargar pagina ----
-function startLoop() {
-  if (!carouselActive || isLooping) return;
-  isLooping = true;
-  const segments = document.querySelectorAll(
-    '[class*="ProgressSegment"], [class*="progressSegment"], div[role="progressbar"]'
-  );
-  const count = segments.length || 5;
-  pressArrowLeftMany(count + 2);
+function getNextButton() {
+  // Varios selectores posibles segun version de Instagram
+  const selectors = [
+    'button[aria-label="Next"]',
+    'button[aria-label="Siguiente"]',
+    'button[aria-label="Next story"]',
+    'button[aria-label="Siguiente historia"]',
+    'div[role="button"][aria-label*="Next"]',
+    'div[role="button"][aria-label*="Siguiente"]'
+  ];
+  for (const sel of selectors) {
+    const el = document.querySelector(sel);
+    if (el) return el;
+  }
+  // Alternativa: area clickeable derecha de la pantalla
+  // Instagram tiene zonas invisibles a los costados
+  return null;
 }
 
-function pressArrowLeftMany(times) {
+// ---- BUCLE: volver a primera historia del usuario ----
+// Estrategia: click en el avatar del usuario dentro de Instagram
+// Sin recargar la pagina, usando la navegacion interna de Instagram (SPA)
+function loopBack() {
   if (!carouselActive) return;
-  if (times <= 0) {
-    isLooping = false;
-    storyTimer = setTimeout(scheduleNextCheck, 1500);
+  const username = currentConfig.username;
+  if (!username) return;
+
+  // Instagram es una SPA (Single Page App)
+  // Usar history.pushState + popstate fuerza navegacion interna sin recargar
+  // Esto evita que Instagram muestre pantalla de login
+  const targetUrl = '/stories/' + username + '/';
+
+  try {
+    // Metodo 1: Buscar link interno al usuario en la pagina actual
+    const userLink = document.querySelector('a[href*="/stories/' + username + '"]');
+    if (userLink) {
+      userLink.click();
+      storyTimer = setTimeout(waitForStory, 1500);
+      return;
+    }
+
+    // Metodo 2: Usar pushState para navegar como SPA sin recargar
+    // Esto funciona porque Instagram escucha cambios en history
+    history.pushState({}, '', targetUrl);
+    window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
+    storyTimer = setTimeout(() => {
+      if (carouselActive) {
+        // Si despues de 2s sigue sin historias, intentar navegacion directa
+        if (!getActiveVideo()) {
+          navigateDirect(username);
+        } else {
+          waitForStory();
+        }
+      }
+    }, 2000);
+
+  } catch(e) {
+    navigateDirect(username);
+  }
+}
+
+// Navegacion directa como ultimo recurso
+// Usamos fetch para pre-autenticar antes de navegar
+function navigateDirect(username) {
+  if (!carouselActive) return;
+  // Navegar dentro del mismo dominio - Instagram mantiene la sesion
+  // El truco: modificar location.pathname sin recargar usando replaceState
+  // y luego disparar el router interno de React de Instagram
+  const targetUrl = 'https://www.instagram.com/stories/' + username + '/';
+
+  // Intentar con el router de React que usa Instagram internamente
+  const reactRoot = document.getElementById('react-root') || document.querySelector('[data-reactroot]');
+  if (reactRoot) {
+    // Forzar navegacion via history API que React escucha
+    window.history.pushState(null, null, '/stories/' + username + '/');
+    // Disparar evento que React Router/Next.js escucha
+    window.dispatchEvent(new Event('popstate'));
+    storyTimer = setTimeout(waitForStory, 2500);
     return;
   }
-  document.dispatchEvent(new KeyboardEvent('keydown', {
-    key: 'ArrowLeft', keyCode: 37, code: 'ArrowLeft', bubbles: true, cancelable: true
-  }));
-  loopCheckTimer = setTimeout(() => pressArrowLeftMany(times - 1), 150);
+
+  // Ultimo recurso: location.assign (mantiene sesion mejor que location.href)
+  window.location.assign(targetUrl);
 }
 
-// Sincronizar cuando cambia el video
-const videoObserver = new MutationObserver(() => {
-  if (carouselActive && !isLooping && !storyTimer) {
-    scheduleNextCheck();
+// ---- Extraccion de historias para el panel del popup ----
+function extractStoriesFromDOM() {
+  const stories = [];
+  try {
+    const pathMatch = location.pathname.match(/\/stories\/([^/]+)/);
+    const currentUser = pathMatch ? pathMatch[1] : '';
+    const avatarEl = document.querySelector('img[alt*="foto de perfil"], img[alt*="profile picture"], header img');
+    const segments = document.querySelectorAll('[class*="ProgressBar"] > div, [class*="progressBar"] > div');
+    if (currentUser) {
+      stories.push({
+        username: currentUser,
+        avatar: avatarEl ? avatarEl.src : '',
+        time: segments.length > 1 ? segments.length + ' historias' : 'Historia activa'
+      });
+    }
+    const sideUsers = document.querySelectorAll('a[href*="/stories/"]');
+    const seen = new Set([currentUser]);
+    sideUsers.forEach(a => {
+      const m = a.href.match(/\/stories\/([^/?]+)/);
+      if (m && !seen.has(m[1]) && m[1] !== 'highlights') {
+        seen.add(m[1]);
+        const img = a.querySelector('img');
+        stories.push({ username: m[1], avatar: img ? img.src : '', time: 'Disponible' });
+      }
+    });
+  } catch(e) {}
+  return stories;
+}
+
+// Observar cambios de video para re-sincronizar timer
+let lastVideoSrc = '';
+setInterval(() => {
+  if (!carouselActive || storyTimer) return;
+  const v = getActiveVideo();
+  if (v && v.src !== lastVideoSrc) {
+    lastVideoSrc = v.src;
+    scheduleAdvance();
   }
-});
-videoObserver.observe(document.body, { childList: true, subtree: true });
+}, 1000);
