@@ -1,48 +1,76 @@
-// background.js — Service Worker
-// Monitorea la URL del tab activo y si salimos de las historias del usuario objetivo, fuerza el regreso.
-
-let targetUser = null;
-let loopActive = false;
-let monitoredTabId = null;
+// background.js - Service Worker v2
+// Usa chrome.storage para persistir estado (service workers se duermen)
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'START_LOOP') {
-    targetUser = msg.username;
-    loopActive = true;
-    monitoredTabId = sender.tab.id;
+    const tabId = msg.tabId || sender.tab?.id;
+    chrome.storage.local.set({
+      loopActive: true,
+      targetUser: msg.username,
+      monitoredTabId: tabId
+    });
+    // Enviar mensaje al content script para que empiece a monitorear
+    if (tabId) {
+      chrome.tabs.sendMessage(tabId, { type: 'START_MONITORING' });
+    }
     sendResponse({ ok: true });
   }
+
   if (msg.type === 'STOP_LOOP') {
-    loopActive = false;
-    targetUser = null;
-    monitoredTabId = null;
+    chrome.storage.local.get(['monitoredTabId'], (data) => {
+      if (data.monitoredTabId) {
+        chrome.tabs.sendMessage(data.monitoredTabId, { type: 'STOP_MONITORING' }).catch(() => {});
+      }
+    });
+    chrome.storage.local.set({ loopActive: false, targetUser: null, monitoredTabId: null });
     sendResponse({ ok: true });
   }
+
   if (msg.type === 'GET_STATE') {
-    sendResponse({ loopActive, targetUser });
+    chrome.storage.local.get(['loopActive', 'targetUser'], (data) => {
+      sendResponse({ loopActive: !!data.loopActive, targetUser: data.targetUser });
+    });
+    return true;
   }
+
+  // Content script detectó que las historias terminaron
+  if (msg.type === 'STORIES_ENDED') {
+    chrome.storage.local.get(['loopActive', 'targetUser', 'monitoredTabId'], (data) => {
+      if (!data.loopActive || !data.targetUser) return;
+      const tabId = data.monitoredTabId || sender.tab?.id;
+      if (!tabId) return;
+      const targetUrl = 'https://www.instagram.com/stories/' + data.targetUser + '/';
+      setTimeout(() => {
+        chrome.tabs.update(tabId, { url: targetUrl });
+      }, 400);
+    });
+    sendResponse({ ok: true });
+  }
+
   return true;
 });
 
-// Detectar cuando la URL cambia en el tab monitoreado
+// Tambien detectar via tabs.onUpdated como backup
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (!loopActive || !targetUser || tabId !== monitoredTabId) return;
-  if (changeInfo.status !== 'loading' && changeInfo.url === undefined) return;
+  if (changeInfo.status !== 'loading') return;
 
-  const url = changeInfo.url || tab.url || '';
-  if (!url) return;
+  chrome.storage.local.get(['loopActive', 'targetUser', 'monitoredTabId'], (data) => {
+    if (!data.loopActive || !data.targetUser) return;
+    if (tabId !== data.monitoredTabId) return;
 
-  const storiesPattern = new RegExp('/stories/' + targetUser + '(/|$)', 'i');
-  const isInStories = storiesPattern.test(url);
+    const url = changeInfo.url || tab.url || '';
+    if (!url || !url.includes('instagram.com')) return;
 
-  // Si estamos en Instagram pero NO en las historias del usuario -> redirigir
-  if (url.includes('instagram.com') && !isInStories) {
-    // Pequeno delay para que la navegacion de Instagram se estabilice
-    setTimeout(() => {
-      if (!loopActive) return;
-      chrome.tabs.update(tabId, {
-        url: 'https://www.instagram.com/stories/' + targetUser + '/'
-      });
-    }, 800);
-  }
+    const inStories = new RegExp('/stories/' + data.targetUser, 'i').test(url);
+    if (!inStories) {
+      setTimeout(() => {
+        chrome.storage.local.get(['loopActive'], (d) => {
+          if (!d.loopActive) return;
+          chrome.tabs.update(tabId, {
+            url: 'https://www.instagram.com/stories/' + data.targetUser + '/'
+          });
+        });
+      }, 600);
+    }
+  });
 });
