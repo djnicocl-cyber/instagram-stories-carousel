@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Instagram Stories Carousel</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 320px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #fafafa;
+      color: #262626;
+    }
+    .header {
+      background: linear-gradient(135deg, #833ab4, #fd1d1d, #fcb045);
+      padding: 16px;
+      color: white;
+      text-align: center;
+    }
+    .header h1 { font-size: 16px; font-weight: 700; }
+    .header p { font-size: 12px; opacity: 0.85; margin-top: 2px; }
+    .content { padding: 16px; }
+    .field { margin-bottom: 14px; }
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #8e8e8e;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    input, select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1.5px solid #dbdbdb;
+      border-radius: 8px;
+      font-size: 14px;
+      background: white;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus, select:focus { border-color: #833ab4; }
+    .btn {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+      margin-bottom: 8px;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn-start {
+      background: linear-gradient(135deg, #833ab4, #fd1d1d, #fcb045);
+      color: white;
+    }
+    .btn-stop {
+      background: #efefef;
+      color: #262626;
+    }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .status {
+      font-size: 12px;
+      text-align: center;
+      padding: 8px;
+      border-radius: 6px;
+      margin-top: 8px;
+      display: none;
+    }
+    .status.active {
+      display: block;
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+    .status.inactive {
+      display: block;
+      background: #fce4ec;
+      color: #c62828;
+    }
+    .divider {
+      border: none;
+      border-top: 1px solid #efefef;
+      margin: 12px 0;
+    }
+    .footer {
+      font-size: 11px;
+      color: #8e8e8e;
+      text-align: center;
+      padding: 0 16px 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>📸 Stories Carousel</h1>
+    <p>Reproduce historias en bucle automático</p>
+  </div>
+  <div class="content">
+    <div class="field">
+      <label>Usuario de Instagram</label>
+      <input type="text" id="username" placeholder="ej: natgeo" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="field">
+      <label>Mostrar historias de las últimas</label>
+      <select id="maxAge">
+        <option value="24">24 horas (todas del día)</option>
+        <option value="12">12 horas</option>
+        <option value="6">6 horas</option>
+        <option value="3">3 horas</option>
+        <option value="1">1 hora</option>
+      </select>
+    </div>
+    <button class="btn btn-start" id="btnStart">▶ Iniciar Carrusel</button>
+    <button class="btn btn-stop" id="btnStop" disabled>⏹ Detener</button>
+    <div class="status" id="status"></div>
+  </div>
+  <hr class="divider">
+  <div class="footer">
+    Abre instagram.com/stories/usuario y reproduce en bucle automático
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
