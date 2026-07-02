@@ -1,36 +1,130 @@
-// content.js v11 - Captura el primer ID de historia para bucle perfecto
+// content.js v12 - Usa ArrowLeft para volver al inicio, NO hace hard reload
 (function() {
 'use strict';
 
 let isMonitoring = false;
 let checkInterval = null;
 let targetUser = null;
-let redirecting = false;
+let restarting = false;
 let historyPatched = false;
-let firstStoryId = null;
+let storyCount = 0;
+let allStoryIds = [];
+let lastUrl = location.href;
 
-// ---- Interceptar fetch para capturar IDs de historias ----
-const origFetch = window.fetch;
-window.fetch = async function(...args) {
-  const response = await origFetch.apply(this, args);
-  try {
-    const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
-    if (url.includes('graphql') || url.includes('reels') || url.includes('stories')) {
-      const clone = response.clone();
-      clone.json().then(data => {
-        const reelsMedia = data?.data?.xdt_api__v1__feed__reels_media?.reels_media;
-        if (reelsMedia && reelsMedia.length > 0) {
-          const items = reelsMedia[0]?.items;
-          if (items && items.length > 0) {
-            const newId = String(items[0].pk || items[0].id || '');
-            if (newId) firstStoryId = newId;
-          }
-        }
-      }).catch(() => {});
+// ---- Capturar IDs de historias por polling de URL ----
+function startUrlPolling() {
+  setInterval(() => {
+    const cur = location.href;
+    if (cur !== lastUrl) {
+      const m = cur.match(/\/stories\/[^\/]+\/(\d+)\//);
+      if (m && !allStoryIds.includes(m[1])) {
+        allStoryIds.push(m[1]);
+      }
+      lastUrl = cur;
     }
-  } catch(e) {}
-  return response;
-};
+  }, 100);
+}
+
+// ---- Detectar cuantas historias hay por segmentos del progress bar ----
+function detectStoryCount() {
+  const segs = [...document.querySelectorAll('div')].filter(d => {
+    try {
+      const r = d.getBoundingClientRect();
+      return r.height > 0 && r.height <= 4 && r.width > 20 && r.top < 90 && r.top > 15;
+    } catch(e) { return false; }
+  });
+  if (segs.length > storyCount) storyCount = segs.length;
+  return segs.length;
+}
+
+// ---- Volver al inicio presionando ArrowLeft muchas veces ----
+function doRestartWithArrowLeft() {
+  if (restarting) return;
+  restarting = true;
+
+  const total = Math.max(storyCount, allStoryIds.length, 10);
+  const stepsBack = total + 3;
+  let steps = 0;
+
+  const goBack = setInterval(() => {
+    if (steps >= stepsBack) {
+      clearInterval(goBack);
+      setTimeout(() => { restarting = false; }, 1000);
+      return;
+    }
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37, which: 37,
+      bubbles: true, cancelable: true
+    }));
+    steps++;
+  }, 100);
+}
+
+// ---- Click automatico en "Ver historia" ----
+function autoClickVerHistoria() {
+  const btns = document.querySelectorAll('div[role="button"], button');
+  for (const btn of btns) {
+    const txt = btn.textContent.trim();
+    if (txt === 'Ver historia' || txt === 'Watch story' || txt === 'View story' ||
+        /^Ver (como|historia)/i.test(txt)) {
+      btn.click();
+      return true;
+    }
+  }
+  return false;
+}
+
+// ---- Interceptar history para detectar salida de /stories/ ----
+function patchHistory() {
+  if (historyPatched) return;
+  historyPatched = true;
+
+  const _push = history.pushState.bind(history);
+  const _replace = history.replaceState.bind(history);
+
+  history.pushState = function(s, t, url) {
+    if (isMonitoring && targetUser && url) {
+      const inStories = /\/stories\//i.test(String(url));
+      if (!inStories && !restarting) {
+        doRestartWithArrowLeft();
+        return; // cancelar navegacion al home
+      }
+    }
+    return _push(s, t, url);
+  };
+
+  history.replaceState = function(s, t, url) {
+    if (isMonitoring && targetUser && url) {
+      const inStories = /\/stories\//i.test(String(url));
+      if (!inStories && !restarting) {
+        doRestartWithArrowLeft();
+        return;
+      }
+    }
+    return _replace(s, t, url);
+  };
+}
+
+// ---- Monitoreo activo ----
+function startMonitoring() {
+  if (isMonitoring) return;
+  isMonitoring = true;
+  patchHistory();
+  startUrlPolling();
+
+  checkInterval = setInterval(() => {
+    autoClickVerHistoria();
+    detectStoryCount();
+    if (targetUser && !location.href.includes('/stories/') && !restarting) {
+      doRestartWithArrowLeft();
+    }
+  }, 500);
+}
+
+function stopMonitoring() {
+  isMonitoring = false;
+  if (checkInterval) { clearInterval(checkInterval); checkInterval = null; }
+}
 
 // ---- Responder mensajes ----
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -49,86 +143,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   return true;
 });
 
-// ---- Click automatico en "Ver historia" ----
-function autoClickVerHistoria() {
-  const btns = document.querySelectorAll('div[role="button"], button');
-  for (const btn of btns) {
-    const txt = btn.textContent.trim();
-    if (txt === 'Ver historia' || txt === 'Watch story' || txt === 'View story' ||
-        /^Ver (como|historia)/i.test(txt)) {
-      btn.click();
-      return true;
-    }
-  }
-  return false;
-}
-
-// ---- Reiniciar al primer ID de historia ----
-function doRestart() {
-  if (redirecting) return;
-  redirecting = true;
-  // Guardar firstStoryId antes del reload
-  if (firstStoryId) {
-    chrome.storage.local.set({ firstStoryId });
-  }
-  let dest;
-  if (firstStoryId && targetUser) {
-    dest = 'https://www.instagram.com/stories/' + targetUser + '/' + firstStoryId + '/';
-  } else if (targetUser) {
-    dest = 'https://www.instagram.com/stories/' + targetUser + '/';
-  } else { return; }
-  window.location.href = dest;
-}
-
-// ---- Interceptar history.pushState/replaceState ----
-function patchHistory() {
-  if (historyPatched) return;
-  historyPatched = true;
-  const _pushState = history.pushState.bind(history);
-  const _replaceState = history.replaceState.bind(history);
-  history.pushState = function(state, title, url) {
-    if (isMonitoring && targetUser && url) {
-      const inStories = /\/stories\//i.test(String(url));
-      if (!inStories && !redirecting) { doRestart(); return; }
-    }
-    return _pushState(state, title, url);
-  };
-  history.replaceState = function(state, title, url) {
-    if (isMonitoring && targetUser && url) {
-      const inStories = /\/stories\//i.test(String(url));
-      if (!inStories && !redirecting) { doRestart(); return; }
-    }
-    return _replaceState(state, title, url);
-  };
-}
-
-// ---- Monitoreo activo ----
-function startMonitoring() {
-  if (isMonitoring) return;
-  isMonitoring = true;
-  patchHistory();
-  checkInterval = setInterval(() => {
-    autoClickVerHistoria();
-    if (targetUser && !location.href.includes('/stories/') && !redirecting) {
-      doRestart();
-    }
-    // Persistir firstStoryId periodicamente
-    if (firstStoryId) {
-      chrome.storage.local.set({ firstStoryId });
-    }
-  }, 500);
-}
-
-function stopMonitoring() {
-  isMonitoring = false;
-  if (checkInterval) { clearInterval(checkInterval); checkInterval = null; }
-}
-
 // Auto-iniciar
-chrome.storage.local.get(['loopActive', 'targetUser', 'firstStoryId'], (data) => {
+chrome.storage.local.get(['loopActive', 'targetUser'], (data) => {
   if (data.loopActive) {
     targetUser = data.targetUser || null;
-    if (data.firstStoryId) firstStoryId = data.firstStoryId;
     startMonitoring();
   }
 });
