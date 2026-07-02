@@ -1,97 +1,41 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Instagram Stories Carousel</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { width: 360px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #fafafa; color: #262626; }
-    .header { background: linear-gradient(135deg, #833ab4, #fd1d1d, #fcb045); padding: 14px 16px; color: white; text-align: center; }
-    .header h1 { font-size: 15px; font-weight: 700; }
-    .header p { font-size: 11px; opacity: 0.85; margin-top: 2px; }
-    .content { padding: 14px 16px; }
-    .field { margin-bottom: 12px; }
-    label { display: block; font-size: 11px; font-weight: 600; color: #8e8e8e; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
-    input, select { width: 100%; padding: 9px 11px; border: 1.5px solid #dbdbdb; border-radius: 8px; font-size: 14px; background: white; outline: none; transition: border-color 0.2s; }
-    input:focus, select:focus { border-color: #833ab4; }
-    .row { display: flex; gap: 8px; }
-    .row .field { flex: 1; }
-    .btn { width: 100%; padding: 11px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity 0.2s, transform 0.1s; margin-bottom: 7px; }
-    .btn:active { transform: scale(0.98); }
-    .btn-start { background: linear-gradient(135deg, #833ab4, #fd1d1d, #fcb045); color: white; }
-    .btn-stop { background: #efefef; color: #262626; }
-    .btn-load { width: 100%; padding: 8px; border: 1.5px solid #dbdbdb; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; background: white; color: #262626; margin-bottom: 10px; }
-    .btn-load:hover { border-color: #833ab4; color: #833ab4; }
-    .btn:disabled, .btn-load:disabled { opacity: 0.45; cursor: not-allowed; }
-    .divider { border: none; border-top: 1px solid #efefef; margin: 10px 0; }
-    /* Panel de historias */
-    .stories-panel { display: none; }
-    .stories-panel.visible { display: block; }
-    .stories-title { font-size: 11px; font-weight: 600; color: #8e8e8e; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
-    .stories-list { max-height: 180px; overflow-y: auto; border: 1.5px solid #dbdbdb; border-radius: 8px; background: white; }
-    .story-item { display: flex; align-items: center; padding: 8px 10px; border-bottom: 1px solid #f0f0f0; cursor: pointer; transition: background 0.15s; }
-    .story-item:last-child { border-bottom: none; }
-    .story-item:hover { background: #f9f0ff; }
-    .story-item.selected { background: #ede2ff; }
-    .story-thumb { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; border: 2px solid #833ab4; margin-right: 10px; flex-shrink: 0; background: #efefef; }
-    .story-thumb-placeholder { width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #833ab4, #fcb045); margin-right: 10px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: white; font-size: 14px; font-weight: 700; }
-    .story-info { flex: 1; min-width: 0; }
-    .story-user { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .story-time { font-size: 11px; color: #8e8e8e; margin-top: 1px; }
-    .story-check { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #dbdbdb; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; color: white; }
-    .story-item.selected .story-check { background: #833ab4; border-color: #833ab4; }
-    .story-item.selected .story-check::after { content: ""; display: block; width: 5px; height: 9px; border: 2px solid white; border-top: none; border-left: none; transform: rotate(45deg) translate(-1px, -1px); }
-    .stories-empty { padding: 20px; text-align: center; color: #8e8e8e; font-size: 12px; }
-    .stories-loading { padding: 16px; text-align: center; color: #8e8e8e; font-size: 12px; }
-    .status { font-size: 12px; text-align: center; padding: 7px; border-radius: 6px; margin-top: 7px; display: none; }
-    .status.active { display: block; background: #e8f5e9; color: #2e7d32; }
-    .status.inactive { display: block; background: #fce4ec; color: #c62828; }
-    .status.loading { display: block; background: #e3f2fd; color: #1565c0; }
-    .footer { font-size: 11px; color: #8e8e8e; text-align: center; padding: 0 16px 12px; }
-  </style>
+<meta charset="UTF-8">
+<title>Stories Carousel</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { width:340px; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:#fafafa; color:#262626; }
+.header { background:linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045); padding:12px 16px; color:white; text-align:center; }
+.header h1 { font-size:14px; font-weight:700; }
+.content { padding:14px 16px; }
+label { display:block; font-size:11px; font-weight:600; color:#8e8e8e; text-transform:uppercase; margin-bottom:4px; }
+input { width:100%; padding:9px 11px; border:1.5px solid #dbdbdb; border-radius:8px; font-size:14px; outline:none; }
+input:focus { border-color:#833ab4; }
+.btn { width:100%; padding:11px; border:none; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; margin-bottom:7px; }
+.btn-load { background:white; border:1.5px solid #dbdbdb; color:#262626; font-size:12px; padding:8px; border-radius:8px; width:100%; cursor:pointer; margin:8px 0; }
+.btn-start { background:linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045); color:white; }
+.btn-stop { background:#efefef; color:#262626; }
+#storiesPanel { margin:8px 0; max-height:150px; overflow-y:auto; border:1.5px solid #dbdbdb; border-radius:8px; background:white; }
+.story-item { display:flex; align-items:center; padding:7px 10px; border-bottom:1px solid #f0f0f0; font-size:13px; }
+.story-item:last-child { border-bottom:none; }
+.story-item img { width:32px; height:32px; border-radius:50%; margin-right:8px; object-fit:cover; }
+#status { font-size:12px; text-align:center; padding:6px; border-radius:6px; margin-top:6px; color:#888; }
+.footer { font-size:11px; color:#8e8e8e; text-align:center; padding:4px 16px 12px; }
+</style>
 </head>
 <body>
-  <div class="header">
-    <h1>Stories Carousel</h1>
-    <p>Reproduce historias de Instagram en bucle</p>
-  </div>
-  <div class="content">
-    <div class="row">
-      <div class="field">
-        <label>Usuario de Instagram</label>
-        <input type="text" id="username" placeholder="ej: natgeo" autocomplete="off" spellcheck="false">
-      </div>
-      <div class="field" style="max-width:110px">
-        <label>Ultimas</label>
-        <select id="maxAge">
-          <option value="24">24 h</option>
-          <option value="12">12 h</option>
-          <option value="6">6 h</option>
-          <option value="3">3 h</option>
-          <option value="1">1 h</option>
-        </select>
-      </div>
-    </div>
-
-    <button class="btn-load" id="btnLoad">Ver historias disponibles</button>
-
-    <!-- Panel de historias -->
-    <div class="stories-panel" id="storiesPanel">
-      <div class="stories-title">Historias encontradas</div>
-      <div class="stories-list" id="storiesList">
-        <div class="stories-loading" id="storiesLoading" style="display:none">Cargando...</div>
-        <div class="stories-empty" id="storiesEmpty" style="display:none">No se encontraron historias para este usuario.</div>
-      </div>
-    </div>
-
-    <hr class="divider">
-    <button class="btn btn-start" id="btnStart">Iniciar Carrusel</button>
-    <button class="btn btn-stop" id="btnStop" disabled>Detener</button>
-    <div class="status" id="status"></div>
-  </div>
-  <hr class="divider">
-  <div class="footer">Mantiene el bucle automatico sin interrupciones</div>
-  <script src="popup.js"></script>
+<div class="header"><h1>Stories Carousel</h1></div>
+<div class="content">
+  <label>Usuario de Instagram</label>
+  <input type="text" id="username" placeholder="ej: natgeo" autocomplete="off">
+  <button class="btn-load" id="btnLoad">Ver historias disponibles</button>
+  <div id="storiesPanel"></div>
+  <button class="btn btn-start" id="btnStart">Iniciar Bucle</button>
+  <button class="btn btn-stop" id="btnStop" style="display:none">Detener Bucle</button>
+  <div id="status"></div>
+</div>
+<div class="footer">Bucle automatico sin interrupciones</div>
+<script src="popup.js"></script>
 </body>
 </html>
