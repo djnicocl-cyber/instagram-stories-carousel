@@ -1,4 +1,4 @@
-// content.js v6 - Detecta fin de historias y fuerza bucle
+// content.js v7 - Auto-click "Ver historia" + detecta fin de historias
 (function() {
   'use strict';
 
@@ -6,6 +6,7 @@
   let checkInterval = null;
   let lastUrl = location.href;
 
+  // ---- Responder mensajes ----
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.type === 'GET_STORIES') {
       sendResponse({ stories: getStoriesList() });
@@ -21,11 +22,30 @@
     return true;
   });
 
+  // ---- Click automatico en "Ver historia" ----
+  function autoClickVerHistoria() {
+    const btns = document.querySelectorAll('div[role="button"], button');
+    for (const btn of btns) {
+      const txt = btn.textContent.trim();
+      if (txt === 'Ver historia' || txt === 'Watch story' || txt === 'View story') {
+        btn.click();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // ---- Monitoreo de URL + boton "Ver historia" ----
   function startMonitoring() {
     if (isMonitoring) return;
     isMonitoring = true;
     lastUrl = location.href;
+
     checkInterval = setInterval(() => {
+      // 1) Auto-click "Ver historia" si aparece
+      autoClickVerHistoria();
+
+      // 2) Detectar si salimos de las historias
       if (location.href !== lastUrl) {
         const from = lastUrl;
         lastUrl = location.href;
@@ -35,7 +55,7 @@
           chrome.runtime.sendMessage({ type: 'STORIES_ENDED' });
         }
       }
-    }, 500);
+    }, 600);
   }
 
   function stopMonitoring() {
@@ -43,11 +63,19 @@
     if (checkInterval) { clearInterval(checkInterval); checkInterval = null; }
   }
 
+  // Auto-iniciar si el bucle esta activo
   chrome.storage.local.get(['loopActive'], (data) => {
-    if (data.loopActive && /\/stories\//.test(location.href)) {
+    if (data.loopActive) {
       startMonitoring();
     }
   });
+
+  // Tambien ejecutar al cargar la pagina por si ya hay un boton visible
+  setTimeout(() => {
+    chrome.storage.local.get(['loopActive'], (data) => {
+      if (data.loopActive) autoClickVerHistoria();
+    });
+  }, 800);
 
   function getStoriesList() {
     const results = [];
