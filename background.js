@@ -1,17 +1,21 @@
-// background.js - Service Worker v2
-// Usa chrome.storage para persistir estado (service workers se duermen)
+// background.js - Service Worker v3
+// Pasa targetUser al content script para intercepcion de pushState
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'START_LOOP') {
     const tabId = msg.tabId || sender.tab?.id;
+    const username = msg.username;
     chrome.storage.local.set({
       loopActive: true,
-      targetUser: msg.username,
+      targetUser: username,
       monitoredTabId: tabId
     });
-    // Enviar mensaje al content script para que empiece a monitorear
+    // Enviar targetUser al content script para que pueda interceptar pushState
     if (tabId) {
-      chrome.tabs.sendMessage(tabId, { type: 'START_MONITORING' });
+      chrome.tabs.sendMessage(tabId, {
+        type: 'START_MONITORING',
+        targetUser: username
+      }).catch(() => {});
     }
     sendResponse({ ok: true });
   }
@@ -33,7 +37,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
-  // Content script detectó que las historias terminaron
+  // Fallback: content script detecta que salimos de historias
   if (msg.type === 'STORIES_ENDED') {
     chrome.storage.local.get(['loopActive', 'targetUser', 'monitoredTabId'], (data) => {
       if (!data.loopActive || !data.targetUser) return;
@@ -42,7 +46,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const targetUrl = 'https://www.instagram.com/stories/' + data.targetUser + '/';
       setTimeout(() => {
         chrome.tabs.update(tabId, { url: targetUrl });
-      }, 400);
+      }, 200);
     });
     sendResponse({ ok: true });
   }
@@ -50,7 +54,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   return true;
 });
 
-// Tambien detectar via tabs.onUpdated como backup
+// Backup via tabs.onUpdated: si la URL cambia fuera de /stories/, redirigir
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status !== 'loading') return;
 
@@ -70,7 +74,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
             url: 'https://www.instagram.com/stories/' + data.targetUser + '/'
           });
         });
-      }, 600);
+      }, 200);
     }
   });
 });
