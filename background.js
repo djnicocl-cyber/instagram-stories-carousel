@@ -1,5 +1,5 @@
 // background.js v7 - Auto-click rapido en dialogo "Ver como djnicocl"
-// Inyecta el auto-click APENAS empieza a cargar la pagina de stories
+// Intercepta navegacion en 'loading' y hace auto-click agresivo al llegar a stories
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
@@ -70,7 +70,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   });
 });
 
-// Cuando la pagina de stories carga completamente, inyectar auto-click AGRESIVO
+// Cuando la pagina de stories carga, inyectar auto-click AGRESIVO en dialogo
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status !== 'complete') return;
 
@@ -81,11 +81,10 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     const url = tab.url || '';
     if (!url.includes('/stories/' + data.targetUser)) return;
 
-    // Inyectar auto-click inmediato y agresivo en el dialogo
     chrome.scripting.executeScript({
       target: { tabId },
       func: () => {
-        console.log('[BG v7] Iniciando auto-click agresivo...');
+        console.log('[BG v7] Auto-click agresivo iniciado');
 
         function clickVerHistoria() {
           const btns = document.querySelectorAll('div[role="button"], button, a[role="button"]');
@@ -103,7 +102,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
         // Intentar inmediatamente
         clickVerHistoria();
 
-        // Luego cada 50ms durante 3 segundos para ser muy rapido
+        // Cada 50ms durante 3 segundos para maxima velocidad
         let count = 0;
         const iv = setInterval(() => {
           count++;
