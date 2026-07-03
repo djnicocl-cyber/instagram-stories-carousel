@@ -1,5 +1,5 @@
-// background.js v6 - Redireccion rapida usando status 'loading'
-// Intercepta apenas empieza a navegar al home, sin esperar que cargue
+// background.js v7 - Auto-click rapido en dialogo "Ver como djnicocl"
+// Inyecta el auto-click APENAS empieza a cargar la pagina de stories
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
@@ -31,9 +31,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 // Detectar navegacion apenas EMPIEZA a cargar (status: 'loading')
-// Asi redirige antes de que el home aparezca en pantalla
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  // Reaccionar en 'loading' para mayor velocidad
   if (changeInfo.status !== 'loading') return;
 
   chrome.storage.local.get(['loopActive', 'targetUser', 'monitoredTabId'], (data) => {
@@ -46,15 +44,14 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     const username = data.targetUser;
     const storyUrl = 'https://www.instagram.com/stories/' + username + '/';
 
-    // Si navego fuera de /stories/username, redirigir de inmediato
     if (url.includes('instagram.com') && !url.includes('/stories/' + username)) {
-      console.log('[BG v6] Loading detectado fuera de stories:', url);
+      console.log('[BG v7] Loading fuera de stories:', url);
       chrome.tabs.update(tabId, { url: storyUrl });
     }
   });
 });
 
-// Tambien vigilar cambios de URL sin recarga (SPA) - complementa el anterior
+// Vigilar cambios de URL sin recarga completa (SPA)
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (!changeInfo.url) return;
 
@@ -67,13 +64,13 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     const storyUrl = 'https://www.instagram.com/stories/' + username + '/';
 
     if (url.includes('instagram.com') && !url.includes('/stories/' + username)) {
-      console.log('[BG v6] URL change fuera de stories:', url);
+      console.log('[BG v7] URL change fuera de stories:', url);
       chrome.tabs.update(tabId, { url: storyUrl });
     }
   });
 });
 
-// Cuando llegamos a las stories, auto-click en "Ver historia" si aparece
+// Cuando la pagina de stories carga completamente, inyectar auto-click AGRESIVO
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status !== 'complete') return;
 
@@ -84,25 +81,36 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     const url = tab.url || '';
     if (!url.includes('/stories/' + data.targetUser)) return;
 
-    // Inyectar auto-click para boton "Ver historia"
+    // Inyectar auto-click inmediato y agresivo en el dialogo
     chrome.scripting.executeScript({
       target: { tabId },
       func: () => {
-        let attempts = 0;
-        const iv = setInterval(() => {
-          attempts++;
-          const btns = document.querySelectorAll('div[role="button"], button');
+        console.log('[BG v7] Iniciando auto-click agresivo...');
+
+        function clickVerHistoria() {
+          const btns = document.querySelectorAll('div[role="button"], button, a[role="button"]');
           for (const btn of btns) {
             const txt = btn.textContent.trim();
-            if (/ver historia|watch story|view story|ver como/i.test(txt)) {
-              console.log('[BG v6] Auto-click:', txt);
+            if (/ver historia|ver como|watch story|view story|continue as|continue watching/i.test(txt)) {
+              console.log('[BG v7] Click en:', txt);
               btn.click();
-              clearInterval(iv);
-              return;
+              return true;
             }
           }
-          if (attempts > 30) clearInterval(iv);
-        }, 200);
+          return false;
+        }
+
+        // Intentar inmediatamente
+        clickVerHistoria();
+
+        // Luego cada 50ms durante 3 segundos para ser muy rapido
+        let count = 0;
+        const iv = setInterval(() => {
+          count++;
+          if (clickVerHistoria() || count > 60) {
+            clearInterval(iv);
+          }
+        }, 50);
       }
     }).catch(() => {});
   });
