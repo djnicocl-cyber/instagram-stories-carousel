@@ -1,5 +1,5 @@
-// background.js v5 - Redireccion directa via tabs.onUpdated
-// Estrategia: cuando Instagram saca al usuario del /stories/, background lo devuelve directo
+// background.js v6 - Redireccion rapida usando status 'loading'
+// Intercepta apenas empieza a navegar al home, sin esperar que cargue
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
@@ -30,31 +30,31 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   return true;
 });
 
-// Vigilar cuando la pagina termina de cargar completamente
+// Detectar navegacion apenas EMPIEZA a cargar (status: 'loading')
+// Asi redirige antes de que el home aparezca en pantalla
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status !== 'complete') return;
+  // Reaccionar en 'loading' para mayor velocidad
+  if (changeInfo.status !== 'loading') return;
 
   chrome.storage.local.get(['loopActive', 'targetUser', 'monitoredTabId'], (data) => {
     if (!data.loopActive || !data.targetUser) return;
     if (tabId !== data.monitoredTabId) return;
 
-    const url = tab.url || '';
+    const url = tab.url || changeInfo.url || '';
+    if (!url) return;
+
     const username = data.targetUser;
     const storyUrl = 'https://www.instagram.com/stories/' + username + '/';
 
-    if (!url.includes('/stories/' + username)) {
-      console.log('[BG v5] Fuera de stories. Redirigiendo a:', storyUrl);
-      setTimeout(() => {
-        chrome.tabs.update(tabId, { url: storyUrl });
-      }, 200);
-    } else {
-      console.log('[BG v5] En stories. Inyectando auto-click...');
-      autoClickVerHistoria(tabId);
+    // Si navego fuera de /stories/username, redirigir de inmediato
+    if (url.includes('instagram.com') && !url.includes('/stories/' + username)) {
+      console.log('[BG v6] Loading detectado fuera de stories:', url);
+      chrome.tabs.update(tabId, { url: storyUrl });
     }
   });
 });
 
-// Vigilar cambios de URL sin recarga completa (SPA navigation de Instagram)
+// Tambien vigilar cambios de URL sin recarga (SPA) - complementa el anterior
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (!changeInfo.url) return;
 
@@ -66,34 +66,44 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     const username = data.targetUser;
     const storyUrl = 'https://www.instagram.com/stories/' + username + '/';
 
-    if (!url.includes('/stories/' + username)) {
-      console.log('[BG v5] URL cambio fuera de stories:', url, '-> redirigiendo');
-      setTimeout(() => {
-        chrome.tabs.update(tabId, { url: storyUrl });
-      }, 200);
+    if (url.includes('instagram.com') && !url.includes('/stories/' + username)) {
+      console.log('[BG v6] URL change fuera de stories:', url);
+      chrome.tabs.update(tabId, { url: storyUrl });
     }
   });
 });
 
-function autoClickVerHistoria(tabId) {
-  chrome.scripting.executeScript({
-    target: { tabId },
-    func: () => {
-      let attempts = 0;
-      const iv = setInterval(() => {
-        attempts++;
-        const btns = document.querySelectorAll('div[role="button"], button');
-        for (const btn of btns) {
-          const txt = btn.textContent.trim();
-          if (/ver historia|watch story|view story|ver como/i.test(txt)) {
-            console.log('[BG v5] Auto-click en:', txt);
-            btn.click();
-            clearInterval(iv);
-            return;
+// Cuando llegamos a las stories, auto-click en "Ver historia" si aparece
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status !== 'complete') return;
+
+  chrome.storage.local.get(['loopActive', 'targetUser', 'monitoredTabId'], (data) => {
+    if (!data.loopActive || !data.targetUser) return;
+    if (tabId !== data.monitoredTabId) return;
+
+    const url = tab.url || '';
+    if (!url.includes('/stories/' + data.targetUser)) return;
+
+    // Inyectar auto-click para boton "Ver historia"
+    chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        let attempts = 0;
+        const iv = setInterval(() => {
+          attempts++;
+          const btns = document.querySelectorAll('div[role="button"], button');
+          for (const btn of btns) {
+            const txt = btn.textContent.trim();
+            if (/ver historia|watch story|view story|ver como/i.test(txt)) {
+              console.log('[BG v6] Auto-click:', txt);
+              btn.click();
+              clearInterval(iv);
+              return;
+            }
           }
-        }
-        if (attempts > 30) clearInterval(iv);
-      }, 200);
-    }
-  }).catch(e => console.log('[BG v5] autoClick error:', e));
-}
+          if (attempts > 30) clearInterval(iv);
+        }, 200);
+      }
+    }).catch(() => {});
+  });
+});
