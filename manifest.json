@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Instagram Stories Carousel",
-  "version": "1.0",
+  "version": "1.2",
   "description": "Muestra las historias de un usuario de Instagram en bucle continuo",
   "permissions": [
     "activeTab",
@@ -22,7 +22,8 @@
     {
       "matches": ["https://www.instagram.com/*"],
       "js": ["content.js"],
-      "run_at": "document_idle"
+      "run_at": "document_start",
+      "all_frames": false
     }
   ]
 }
